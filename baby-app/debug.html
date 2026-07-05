@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Debug 2</title>
+<style>
+  body { font-family: monospace; font-size: 12px; padding: 16px; background: #111; color: #0f0; margin:0; }
+  .ok { color: #0f0; } .err { color: #f44; } .warn { color: #ff0; }
+  pre { white-space: pre-wrap; word-break: break-all; }
+  button { display:block; width:100%; padding:14px; font-size:16px; margin-bottom:12px; background:#E8839A; color:white; border:none; border-radius:12px; }
+</style>
+</head>
+<body>
+<button id="testBtn">▶ НАЖМИ МЕНЯ (тест)</button>
+<pre id="out"></pre>
+
+<script src="data.js"></script>
+<script>
+const out = document.getElementById('out');
+const log = [];
+function p(msg, cls) {
+  const t = new Date().toISOString().substr(11,12);
+  log.push(`<span class="${cls||''}">[${t}] ${msg}</span>`);
+  out.innerHTML = log.join('\n');
+}
+
+// Перехватываем ВСЕ ошибки
+window.onerror = (msg, src, line, col, err) => {
+  p('WINDOW.ONERROR: ' + msg + ' (line ' + line + ')', 'err');
+  return true;
+};
+window.addEventListener('unhandledrejection', e => {
+  p('UNHANDLED PROMISE: ' + e.reason, 'err');
+});
+
+p('Page loaded. weeksData.length=' + (typeof weeksData !== 'undefined' ? weeksData.length : 'MISSING'));
+
+// Копируем ТОЧНУЮ логику из index.html
+const TOTAL_WEEKS = 41;
+let currentWeek = 1;
+let dueDateMs = new Date(2026, 7, 30).getTime();
+
+function computeWeek(ms) {
+  const pmc = new Date(ms);
+  pmc.setDate(pmc.getDate() - 280);
+  const daysPast = Math.floor((Date.now() - pmc.getTime()) / 86400000);
+  const week = Math.floor(daysPast / 7);
+  return Math.max(1, Math.min(TOTAL_WEEKS, week));
+}
+
+// Создаём точную копию экранов как в реальном app
+const body = document.body;
+
+// Welcome screen
+const sw = document.createElement('div');
+sw.id = 'fake-welcome';
+sw.style.cssText = 'position:fixed;inset:0;background:rgba(255,200,200,0.3);display:flex;align-items:center;justify-content:center;';
+sw.className = 'screen active';
+sw.innerHTML = '<div style="text-align:center;color:#E8839A;font-size:18px;">Welcome Screen<br><small>(нажми кнопку выше)</small></div>';
+body.appendChild(sw);
+
+// Cards screen  
+const sc = document.createElement('div');
+sc.id = 'fake-cards';
+sc.style.cssText = 'position:fixed;inset:0;background:rgba(200,200,255,0.3);display:flex;align-items:center;justify-content:center;transition:opacity .4s,transform .4s;';
+sc.className = 'screen hidden';
+sc.innerHTML = '<div id="fake-track" style="font-size:18px;color:blue;">Cards Screen</div>';
+body.appendChild(sc);
+
+// Добавляем CSS для hidden/active (точно как в app)
+const style = document.createElement('style');
+style.textContent = `
+  .screen { position:fixed;inset:0;transition:opacity .4s ease, transform .4s ease; }
+  .screen.hidden { opacity:0; pointer-events:none; transform:scale(0.97); }
+  .screen.active { opacity:1; pointer-events:all; transform:scale(1); }
+`;
+body.appendChild(style);
+
+document.getElementById('testBtn').addEventListener('click', () => {
+  p('--- BUTTON CLICKED ---', 'warn');
+  
+  p('Step 1: buildCards() start');
+  let cardCount = 0;
+  try {
+    if (typeof weeksData !== 'undefined') {
+      weeksData.forEach(d => cardCount++);
+      p('Step 1 OK: ' + cardCount + ' cards would be built', 'ok');
+    }
+  } catch(e) { p('Step 1 ERROR: ' + e.message, 'err'); }
+
+  p('Step 2: computeWeek()');
+  let w;
+  try {
+    w = computeWeek(dueDateMs);
+    p('Step 2 OK: week=' + w, 'ok');
+  } catch(e) { p('Step 2 ERROR: ' + e.message, 'err'); }
+
+  p('Step 3: switching screens');
+  try {
+    sw.classList.remove('active'); sw.classList.add('hidden');
+    sc.classList.remove('hidden'); sc.classList.add('active');
+    p('Step 3 OK: welcome=' + sw.className + ', cards=' + sc.className, 'ok');
+  } catch(e) { p('Step 3 ERROR: ' + e.message, 'err'); }
+
+  p('Step 4: rAF x2');
+  requestAnimationFrame(() => {
+    p('Step 4a: first rAF');
+    requestAnimationFrame(() => {
+      p('Step 4b: second rAF');
+      try {
+        const vpW = sc.offsetWidth || sc.getBoundingClientRect().width || window.innerWidth;
+        p('Step 4 OK: vpWidth=' + vpW, vpW > 0 ? 'ok' : 'err');
+        
+        const transform = `translateX(${-(w - 1) * vpW}px)`;
+        p('Step 5: transform=' + transform, 'ok');
+        
+        p('=== ALL STEPS PASSED ===', 'ok');
+        p('Если ты это видишь — логика работает', 'ok');
+        p('Проблема должна быть в buildCards() или goToWeek() реального app', 'warn');
+      } catch(e) { p('Step 4 ERROR: ' + e.message, 'err'); }
+    });
+  });
+});
+
+p('Ready. Нажми кнопку выше.');
+</script>
+</body>
+</html>
